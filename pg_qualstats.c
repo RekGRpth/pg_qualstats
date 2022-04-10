@@ -57,7 +57,13 @@
 #include "parser/analyze.h"
 #include "parser/parse_node.h"
 #include "parser/parsetree.h"
+#if PG_VERSION_NUM >= 150000
+#include "postmaster/autovacuum.h"
+#endif
 #include "postmaster/postmaster.h"
+#if PG_VERSION_NUM >= 150000
+#include "replication/walsender.h"
+#endif
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
 #if PG_VERSION_NUM >= 100000
@@ -2446,18 +2452,31 @@ pgqs_memsize(void)
 static Size
 pgqs_sampled_array_size(void)
 {
+	int32 _autovac_max_workers;
+	int32 _max_wal_senders;
+#if PG_VERSION_NUM < 150000
 	const char *guc_string;
-	int32 autovac_max_workers;
 
 	/*
-	 * autovacuum_max_workers isn't declared as PGDLLEXPORT, so retrieve it
-	 * using GetConfigOption to allow compilation on Windows.
+	 * autovacuum_max_workers and max_wal_senders aren't declared as
+	 * PGDLLIMPORT in pg15- versions, so retrieve them using GetConfigOption to
+	 * allow compilation on Windows.
 	 */
 	guc_string = GetConfigOption("autovacuum_max_workers",
 											 false, true);
 
-	autovac_max_workers = pg_atoi(guc_string, 4, 0);
-	Assert(autovac_max_workers >= 1 && autovac_max_workers <= MAX_BACKENDS);
+	_autovac_max_workers = pg_atoi(guc_string, 4, 0);
+	Assert(_autovac_max_workers >= 1 && _autovac_max_workers <= MAX_BACKENDS);
+
+	guc_string = GetConfigOption("max_wal_senders",
+											 false, true);
+
+	_max_wal_senders = pg_atoi(guc_string, 4, 0);
+	Assert(_max_wal_senders >= 0 && _max_wal_senders <= MAX_BACKENDS);
+#else
+	_autovac_max_workers = autovacuum_max_workers;
+	_max_wal_senders = max_wal_senders;
+#endif
 	/*
 	 * Parallel workers need to be sampled if their original query is also
 	 * sampled.  We store in shared mem the sample state for each query,
@@ -2465,8 +2484,16 @@ pgqs_sampled_array_size(void)
 	 * plus autovacuum launcher and workers, plus bg workers and an extra one
 	 * since BackendId numerotation starts at 1.
 	 */
-	return (sizeof(bool) * (MaxConnections + autovac_max_workers + 1
-							+ max_worker_processes + 1));
+	return (sizeof(bool) * (MaxConnections + _autovac_max_workers + 1
+							+ max_worker_processes
+#if PG_VERSION_NUM >= 120000
+							/*
+							 * Starting with pg12, max_wal_senders isn't part
+							 * of max_connections anymore
+							 */
+							+ _max_wal_senders
+#endif
+							+ 1));
 }
 #endif
 
