@@ -1054,7 +1054,11 @@ static void
 pgqs_collectNodeStats(PlanState *planstate, List *ancestors, pgqsWalkerContext *context)
 {
 	Plan	   *plan = planstate->plan;
+#if PG_VERSION_NUM >= 190000
+	NodeInstrumentation *instrument = planstate->instrument;
+#else
 	Instrumentation *instrument = planstate->instrument;
+#endif
 	int64		oldcount = context->count;
 	double		oldfiltered = context->nbfiltered;
 	double		old_err_ratio = context->err_estim[PGQS_RATIO];
