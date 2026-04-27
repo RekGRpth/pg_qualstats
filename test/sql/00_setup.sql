@@ -12,6 +12,8 @@ DECLARE
 BEGIN
     FOR ln IN EXECUTE $1
     LOOP
+        -- Replace any numeric subquery name with just 'N'
+        ln := regexp_replace(ln, '-?\m(expr_)?\d+\M', 'N', 'g');
         -- Replace any numeric word with just 'N'
         ln := regexp_replace(ln, '-?\m\d+\M', 'N', 'g');
         -- In sort output, the above won't match units-suffixed numbers
